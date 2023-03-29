@@ -2,7 +2,7 @@
 
 Replication files for simulation results.
 
-See README.txt for details.
+See [README.txt](README.txt) for details.
 
 ## Reference
 
