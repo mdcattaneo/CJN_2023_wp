@@ -1,11 +1,12 @@
 #############################################
 ##  Bootstrapping Isotonic Regression Estimator
 ##  Cattaneo Jansson Nagasawa
-##  Mar-28-2023
+##  August-22-2023
 ##  Function File
 #############################################
 library(fdrtool)
 library(lpdensity)
+library(nprobust)
 library(Rcpp)
 sourceCpp("isoreg.cpp")
 ## setting seed
@@ -121,6 +122,17 @@ ND.mhat3 <- function(eps){
   Y3 <- upsilon_hat(obs$a, obs$y, x0s[m]+2*eps,thetahat) - Y0
   Y4 <- upsilon_hat(obs$a, obs$y, x0s[m]+(-2)*eps,thetahat) - Y0
   max(c( eps^(-4)*( lambdas3%*%c(Y1,Y2,Y3,Y4) ) ),0)
+}
+
+## Nuisance parameter for plug-in method
+## local linear estimation of sigma2
+locallinear <- function(y,x,x0){
+  tmp <- isoreg(x,y)
+  muhat <- rep(NA,length(x))
+  muhat[tmp$ord] <- tmp$yf
+  ehat2 <- (y - muhat)^2
+  tmp <- lprobust(ehat2,x,eval=x0)
+  tmp$Estimate[,"tau.us"]
 }
 
 

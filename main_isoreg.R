@@ -1,7 +1,7 @@
 #############################################
 ##  Bootstrapping Isotonic Regression Estimator
 ##  Cattaneo Jansson Nagasawa
-##  Mar-28-2023
+##  August-22-2023
 ##  Main File
 #############################################
 rm(list=ls())
@@ -20,17 +20,27 @@ S <- 4000%/%ncpus
 ## evaluation point of regression function: f(x0)
 x0s <- rep(0.5,3)
 
-ags <- commandArgs(trailingOnly = TRUE)
-if (length(ags)<=1)ags <- c(1,1)
-ag <- ags[1]
+## parameter for plug-in method
+# grid for simulating gaussian process
+upbound <- 10
+num.grids <- 500
+grid1 <- seq(from=-upbound,to=0,length.out=num.grids)
+grid2 <- seq(from=0,to=upbound,length.out=num.grids)
+grids <- c(grid1,grid2[-1])
 
-models <- as.integer(ags[2])
+## 
+ags <- commandArgs(trailingOnly = TRUE)
+if (length(args)==0)ags <- list("1")
+ag <- ags[[1]]
+
+models <- 1:3
 
 source("main_function_isoreg.R")
 ## SEED SETUP FOR PARALLELIZATION
 SeedFunction()
 
-num.rows.table <- 7 # 1 (std nonpar boot) + 3 (m-out-of-n) + 1 (Oracle) +  2 (ND: known q + robust)
+num.rows.table <- 8 # 1 (std nonpar boot) + 3 (m-out-of-n) + 1 (Oracle) +
+                    # 2 (ND: known q + robust) + 1 (plug-in)
 
 
 col.names <- c("q.025","q.975","D1","D3","thetahat","label") 
@@ -75,6 +85,11 @@ for (m in models){
         # "robust" inference
         Mhat.robust <- c(M1hat,M3hat)
         
+        # nuisance parameter estimation for plug-in method
+        density.est <- lpdensity(data=obs$a,grid=x0s[m])
+        fhat <- c(density.est$Estimate[,"f_p"])
+        sigma2hat <- locallinear(obs$y,obs$a,x0s[m])
+        
         ##########################
         ## Bootstrap Iterations ##
         ##########################
@@ -84,6 +99,7 @@ for (m in models){
         oracle <- rep(NA, B)
         ND.knowq <- rep(NA, B)
         ND.robust <- rep(NA, B)
+        plugin <- rep(NA, B)
         
         for (b in 1:B){
             boot.obs <- obs[sample(n, replace = T),]
@@ -96,12 +112,21 @@ for (m in models){
                 mn.boot[b,mn] <- Iso.reg(boot.obs[1:subsample[mn],"a"],boot.obs[1:subsample[mn],"y"],x0s[m])
             }
             ## oracle mean function
-            oracle[b] <- gridsearch(obs$a, obs$y, boot.obs$a,boot.obs$y,Morac,x0s[m],thetahat)
+            oracle[b] <- Boot(obs$a, obs$y, boot.obs$a,boot.obs$y,Morac,x0s[m],thetahat)
             
             ## ND
-            ND.knowq[b] <- gridsearch(obs$a, obs$y, boot.obs$a,boot.obs$y,Mhat.knowq,x0s[m],thetahat)
-            ND.robust[b] <- gridsearch(obs$a, obs$y, boot.obs$a,boot.obs$y,Mhat.robust,x0s[m],thetahat)
+            ND.knowq[b] <- Boot(obs$a, obs$y, boot.obs$a,boot.obs$y,Mhat.knowq,x0s[m],thetahat)
+            ND.robust[b] <- Boot(obs$a, obs$y, boot.obs$a,boot.obs$y,Mhat.robust,x0s[m],thetahat)
             
+            ## plug-in method
+            # simulating the limit distribution
+            stdNorm <- rnorm(num.grids-1)
+            Gtmp1 <- sqrt(grid1[-1]-grid1[-num.grids])*stdNorm
+            stdNorm <- rnorm(num.grids-1)
+            Gtmp2 <- sqrt(grid1[-1]-grid1[-num.grids])*stdNorm 
+            Gsim.est <- c(rev(cumsum(Gtmp2)),0,cumsum(Gtmp1))*sqrt(fhat*sigma2hat)
+            
+            plugin[b] <- PlugIn(grids,Gsim.est,Mhat.knowq,thetahat)/fhat
         }
         ## end of bootstrap iterations
         
@@ -132,6 +157,12 @@ for (m in models){
             if (k==7){ #ND robust
               out[Row, 1:2] <- quantile(ND.robust-thetahat, probs = c(0.025, 0.975), type = 1 )
               out[Row, 3:4] <- Mhat.robust
+              out[Row, 5] <- thetahat
+              out[Row, 6] <- k
+            }
+            if (k==8){ #plug-in 
+              out[Row, 1:2] <- quantile(plugin, probs = c(0.025, 0.975), type = 1 )
+              out[Row, 3:4] <- Mhat.knowq
               out[Row, 5] <- thetahat
               out[Row, 6] <- k
             }

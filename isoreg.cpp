@@ -46,25 +46,9 @@ double upsilon_hat(NumericVector A, NumericVector Psi,double x0,
   return(out);
 }
 
-//[[Rcpp::export]]
-NumericVector Upsilon(NumericVector A, NumericVector Psi,double x0,
-                     double thetahat){
-  int n = A.size();
-  NumericVector out(n);
-  for (int i=0; i<n; i++){
-    double obj = 0.0;
-    for (int j=0;j<n;j++){
-      obj += Psi[j]*(A[j]<=A[i]) - thetahat*(A[j]<=A[i]);
-    }
-    out[i] = obj/n;
-  }
-  return(out);
-}
-
-
 
 //[[Rcpp::export]]
-double gridsearch(NumericVector A, NumericVector Psi, NumericVector Aboot,
+double Boot(NumericVector A, NumericVector Psi, NumericVector Aboot,
                   NumericVector Psiboot,NumericVector M, double x0,double thetahat){
   NumericVector Grid1 = A[A<=x0];
   NumericVector Grid2 = A[A>=x0];
@@ -77,6 +61,37 @@ double gridsearch(NumericVector A, NumericVector Psi, NumericVector Aboot,
   for (int i=0; i< N1; i++){
     NumericVector denom = Phi2-Phi1[i];
     denom[denom==0] = 1.0;
+    NumericVector tmp = (f_g2 - f_g1[i])/denom;
+    mins[i] = min(tmp);
+  }
+  return max(mins);
+}
+
+
+NumericVector PIGamma(NumericVector G, NumericVector M,
+                      double thetahat, NumericVector grid){
+  int J = grid.size();
+  NumericVector out(J);
+  
+  for (int k=0; k<J; k++){
+    out[k] = G[k] + M[0]*pow(grid[k],2) + M[1]*pow(grid[k],4);
+  }
+  return(out);
+}
+
+//[[Rcpp::export]]
+double PlugIn(NumericVector grid, NumericVector G,
+                  NumericVector M, double thetahat){
+  NumericVector Grid1 = grid[grid<0];
+  NumericVector G1 = G[grid<0];
+  NumericVector Grid2 = grid[grid>=0];
+  NumericVector G2 = G[grid>=0];
+  int N1 = Grid1.size();
+  NumericVector mins(N1);
+  NumericVector f_g1 = PIGamma(G1,M,thetahat,Grid1);
+  NumericVector f_g2 = PIGamma(G2,M,thetahat,Grid2);
+  for (int i=0; i< N1; i++){
+    NumericVector denom = Grid2-Grid1[i];
     NumericVector tmp = (f_g2 - f_g1[i])/denom;
     mins[i] = min(tmp);
   }
